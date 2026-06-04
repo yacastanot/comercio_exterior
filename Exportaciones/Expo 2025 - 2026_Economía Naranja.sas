@@ -1,0 +1,366 @@
+Filename FILE2025 ( '\\systema44\Migracion\e110\M10125.ava'
+                    '\\systema44\Migracion\e110\M10225.ava'
+                    /*'\\systema44\Migracion\e110\M10325.ava'
+				    '\\systema44\Migracion\e110\M10425.ava'
+				    '\\systema44\Migracion\e110\M10525.ava'
+					'\\systema44\Migracion\e110\M10625.ava'
+					'\\systema44\Migracion\e110\M10725.ava'
+                    '\\systema44\Migracion\e110\M10825.ava'
+                    '\\systema44\Migracion\e110\M10925.ava'
+					'\\systema44\Migracion\e110\M11025.ava'
+					'\\systema44\Migracion\e110\M11125.ava'
+					'\\systema44\Migracion\e110\M11225.ava'*/);
+
+Filename FILE2026 ( '\\systema44\Migracion\e110\M10126.ava'
+                    '\\systema44\Migracion\e110\M10226.ava'
+                    /*'\\systema44\Migracion\e110\M10326.ava'
+				    '\\systema44\Migracion\e110\M10426.ava'
+				    '\\systema44\Migracion\e110\M10526.ava'
+					'\\systema44\Migracion\e110\M10626.ava'
+					'\\systema44\Migracion\e110\M10726.ava'
+                    '\\systema44\Migracion\e110\M10826.ava'
+                    '\\systema44\Migracion\e110\M10926.ava'
+					'\\systema44\Migracion\e110\M11026.ava'
+					'\\systema44\Migracion\e110\M11126.ava'
+					'\\systema44\Migracion\e110\M11226.ava'*/);
+
+LIBNAME EXPO '\\DIMPE-D-081\d\COMEX';
+
+%macro CALC(VAR);
+
+DATA FILE2025; INFILE FILE2025 LRECL=678;
+
+INPUT
+
+@1 FECHPRO 4.	@5 MES 2. @13 adu 2. @42 pais 3. @85 lugsaln 2. @87 lugsal $3. @171 deptor 2.	@139 via 1. @140 BANDERA 3. @143 REGIMEN 1. 
+@90 deptpr 2. 	@92 DEX ANTE 14. @144 modalidad 3.	 @147 forpa4 1. @153 posara 10. @153 CAPITULO 2. @48 Ciuexp $20.
+@153 PARTE 4. 	@153 SA 6. @173 unidad 2.    @178 cantidad 15.2  @16 Nit $12. @347 Razon $60. @326 DEX $13. 
+@208 kneto 15.2  @139 via 1. @238 fobpes 20.2 @223 fobdol 15.2 @37 municipio 5. @273 fletes 15. @320 FECHEMB 6. @339 FECHDEC 8. @288 seguros 15.; 
+
+parte=substr(posara, 1,6);
+
+if POSARA=0901110000 or posara=0901111000 or posara=0901120000 or POSARA=7202600000 then TRA=1;
+
+if 2701<=PARTE<=2704 then TRA=1;
+If 2709<=PARTE<=2715 then TRA=1;
+
+IF TRA=. THEN TRA=2;
+
+DATA FILE2026; INFILE FILE2026 LRECL=678;
+
+INPUT
+
+@1 FECHPRO 4.	@5 MES 2. @13 adu 2. @42 pais 3. @85 lugsaln 2. @87 lugsal $3. @171 deptor 2.	@139 via 1. @140 BANDERA 3. @143 REGIMEN 1. 
+@90 deptpr 2. 	@92 DEX ANTE 14. @144 modalidad 3.	 @147 forpa4 1. @153 posara 10. @153 CAPITULO 2. @48 Ciuexp $20.
+@153 PARTE 4. 	@153 SA 6. @173 unidad 2.    @178 cantidad 15.2  @16 Nit $12. @347 Razon $60. @326 DEX $13. 
+@208 kneto 15.2  @139 via 1. @238 fobpes 20.2 @223 fobdol 15.2 @37 municipio 5. @273 fletes 15. @320 FECHEMB 6. @339 FECHDEC 8. @288 seguros 15.; 
+
+
+parte=substr(posara, 1,6);
+
+if POSARA=0901110000 or posara=0901111000 or posara=0901120000 or POSARA=7202600000 then TRA=1;
+
+if 2701<=PARTE<=2704 then TRA=1;
+If 2709<=PARTE<=2715 then TRA=1;
+
+IF TRA=. THEN TRA=2; 
+
+
+proc sort data=FILE2025;by &var;
+proc sort data=FILE2026;by &var;
+
+proc summary data=FILE2025;
+var FOBDOL KNETO fobpes cantidad;
+by &var;
+output out=TOTAL2025 sum(FOBDOL KNETO fobpes cantidad)=FOBDOL2025 KNETO2025 fobpes2025 cantidad2025;
+
+proc summary data=FILE2026;
+var FOBDOL KNETO fobpes cantidad;
+by &var;
+output out=TOTAL2026 sum(FOBDOL KNETO fobpes cantidad)=FOBDOL2026 KNETO2026 fobpes2026 cantidad2026;
+
+data EXPO.TOTAL&VAR;
+merge TOTAL2025 TOTAL2026;
+by &var;
+If POSARA IN (3704000000
+3705000000
+3705100000
+3705100010
+3705100090
+3705200000
+3705200010
+3705200090
+3705900000
+3705900010
+3705900090
+3706100000
+3706100010
+3706100011
+3706100012
+3706100021
+3706100022
+3706100023
+3706100024
+3706100025
+3706100090
+3706100091
+3706100092
+3706100093
+3706100094
+3706100095
+3706900000
+3706900010
+3706900011
+3706900012
+3706900021
+3706900022
+3706900023
+3706900024
+3706900025
+3706900090
+3706900091
+3706900092
+3706900093
+3706900094
+3706900095
+4901100010
+4901100020
+4901100090
+4901101000
+4901109000
+4901910000
+4901990010
+4901990020
+4901990090
+4901991000
+4901999000
+4902100000
+4902900010
+4902900090
+4902901000
+4902909000
+4903000000
+4904000000
+4905200000
+4905910000
+4905990000
+4908100000
+4908900010
+4908900090
+4908901000
+4908909000
+4909000000
+4910000000
+4911100000
+4911101000
+4911109000
+4911910000
+4911911000
+4911919000
+8523402900
+8523491000
+8523492000
+8523499000
+8524101000
+8524109000
+8524211000
+8524212000
+8524219000
+8524221000
+8524222000
+8524229000
+8524229010
+8524229090
+8524231000
+8524232000
+8524239000
+8524239010
+8524239090
+8524310000
+8524320000
+8524390000
+8524400000
+8524511000
+8524519000
+8524521000
+8524529000
+8524531000
+8524539000
+8524600000
+8524901000
+8524902000
+8524909010
+8524909090
+8524909100
+8524909900
+8524991000
+8524999000
+9201100000
+9201200000
+9201900000
+9202100000
+9202900000
+9203000000
+9204100000
+9204200000
+9205100000
+9205900000
+9205901000
+9205902000
+9205903000
+9205909000
+9206000000
+9207100000
+9207900000
+9208100000
+9208900000
+9209100000
+9209200000
+9209300000
+9209910000
+9209920000
+9209930000
+9209940000
+9209990000
+9501000000
+9502100000
+9502910000
+9502990000
+9503001000
+9503002000
+9503002100
+9503002200
+9503002800
+9503002900
+9503002920
+9503002990
+9503003000
+9503004000
+9503009100
+9503009200
+9503009300
+9503009400
+9503009500
+9503009600
+9503009900
+9503009910
+9503009990
+9503100000
+9503200000
+9503200010
+9503200090
+9503300000
+9503300010
+9503300090
+9503410000
+9503490000
+9503490010
+9503490090
+9503500000
+9503500010
+9503500090
+9503600000
+9503600010
+9503600090
+9503700000
+9503700010
+9503700090
+9503800000
+9503900000
+9504200000
+9504300000
+9504301000
+9504301010
+9504301090
+9504309000
+9504400000
+9504901000
+9504902000
+9504903000
+9504909000
+9504909100
+9504909900
+9701100000
+9701100010
+9701100090
+9701210000
+9701220000
+9701290000
+9701900000
+9701900010
+9701900090
+9701910000
+9701920000
+9701990000
+9702000000
+9702000010
+9702000090
+9702100000
+9702900000
+9703000000
+9703000010
+9703000090
+9703100000
+9703900000
+9705000000
+9705000010
+9705000090
+9705100000
+9705210000
+9705220000
+9705290000
+9705310000
+9705390000
+9706000000
+9706000010
+9706000090
+9706100000
+9706900000
+9804000000
+9806000000
+9809000000
+);
+drop _type_;
+run;
+%mend CALC;
+
+%CALC(posara parte capitulo deptor pais mes); RUN; 
+
+PROC SORT DATA=EXPO.totalposara; BY posara;run;
+
+PROC SORT DATA=EXPO.corre62; BY posara; RUN;
+
+DATA expo.EJE; MERGE expo.totalposara (IN=A) EXPO.corre62; BY posara;IF A;
+RUN;
+
+PROC EXPORT
+ DATA=Expo.eje
+ OUTFILE='\\DIMPE-D-081\d\COMEX\EXPO\Resultados\Exportaciones_EN_2026.XLSX'
+ DBMS=excel
+ REPLACE;Run;
+
+
+
+
+
+
+ /**************************************Para generar cuadro*******************************************/
+/*ods html body="\\systema44\Migracion\ARCHIVOS ZF\Programación\Anexos\Balanza comercial_Septiembre19.xls" newfile=proc style=normal;
+proc tabulate data=COMEX_INCH missing noseps format= commaX12.; 
+title2 'Comercio Exterior en Zonas Francas';
+title3 'Balanza Comercial de las Zonas Francas Colombianas';
+title4 'Total nacional';
+title5 '2005p- 2019(Septiembre)p';
+title6 'Miles de dólares FOB';
+class Año Pfe_eje OPERA ;
+var VAFOBD ; 
+table año='' *(PFE_EJE='' all= 'total anual'),
+      OPERA=''* VAFOBD= 'Miles de dólares FOB'  *  sum=''/*f=miles.   
+          /                   
+       box='Mes' rts=15;
+  format Pfe_eje  $mes. ;
+  format OPERA  COMEX. ;
+  format Año  $year. ;
+  footnote3 'Nota: no es posible adicionar directamente la información de comercio exterior en las zonas francas colombianas de este boletín con la información publicada del comercio exterior colombiano, debido a que existe información de Zonas Francas que se encuentra en ambas investigaciones';
+ run;*/ 
+
