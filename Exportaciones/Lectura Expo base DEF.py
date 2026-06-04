@@ -17,7 +17,7 @@ from pathlib import Path
 # =============================================================================
 
 RUTA_DEF      = Path(r'\\systema44\Migracion\E110')
-RUTA_RESULTADO = Path(r'\\DIMPE-D-081\d\COMEX\EXPO\Resultados')
+RUTA_RESULTADO = Path(r'D:\COMEX\EXPO\Resultados')
 ARCHIVO_SALIDA = RUTA_RESULTADO / 'Resumen_Expo_DEF_2026.xlsx'
 
 ARCHIVOS_DEF = [
@@ -55,27 +55,34 @@ VARS_SUMA = ['KILO_BR3', 'KILO_NET', 'VAL_FOB', 'FOB_PES3']
 # =============================================================================
 
 def _aplicar_decimal_implicito(serie: pd.Series) -> pd.Series:
-    """Replica el informat SAS w.2: divide entre 100 si no hay punto en el dato."""
+    """
+    Replica el informat SAS w.2 operando sobre el string crudo del archivo:
+    si el valor ya tiene punto decimal se usa tal cual; si no, se divide entre 100.
+    Debe recibir strings crudos (dtype=str en read_fwf) para no perder
+    dígitos decimales en números de gran magnitud como FOB_PES3.
+    """
     def _convertir(val):
         if pd.isna(val):
-            return val
+            return float('nan')
         s = str(val).strip()
         if not s:
-            return None
+            return float('nan')
         return float(s) if '.' in s else float(s) / 100
 
-    return serie.apply(_convertir)
+    return pd.to_numeric(serie.apply(_convertir), errors='coerce')
 
 
 def leer_def(archivos: list) -> pd.DataFrame:
     """Lee y concatena archivos .DEF de ancho fijo (equivale a DATA EXPO + INFILE)."""
     partes = []
     for ruta in archivos:
+        # Leer todo como string para que _aplicar_decimal_implicito trabaje
+        # sobre el string crudo y no sobre un float ya parseado.
         df = pd.read_fwf(
             ruta,
             colspecs=COLSPECS,
             names=NOMBRES,
-            dtype={'POS_ARAN': str},
+            dtype=str,
             header=None,
             encoding='latin-1',
         )
@@ -83,15 +90,15 @@ def leer_def(archivos: list) -> pd.DataFrame:
 
     df = pd.concat(partes, ignore_index=True)
 
-    # Convertir columnas numéricas
-    for col in ['ANO_PROC', 'MES_PROC']:
-        df[col] = pd.to_numeric(df[col], errors='coerce')
-
-    # Decimales implícitos (SAS w.2)
+    # Decimales implícitos (SAS w.2): aplicar ANTES de pd.to_numeric
     for col in COLS_IMPLIED_DEC2:
         df[col] = _aplicar_decimal_implicito(df[col])
 
-    # Normalizar POS_ARAN a 10 dígitos con ceros a la izquierda
+    # Convertir columnas numéricas restantes
+    for col in ['ANO_PROC', 'MES_PROC']:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    # POS_ARAN: conservar como string con ceros a la izquierda
     df['POS_ARAN'] = df['POS_ARAN'].str.strip().str.zfill(10)
 
     return df
