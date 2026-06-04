@@ -19,7 +19,7 @@ from pathlib import Path
 RUTA_AVA       = Path(r'\\systema44\Migracion\e110')
 RUTA_COMEX     = Path(r'D:\COMEX')
 RUTA_RESULTADO = RUTA_COMEX / 'EXPO' / 'Resultados'
-ARCHIVO_SALIDA = RUTA_RESULTADO / 'Exportaciones GanadovsCarne2025-2026_NIT.xlsx'
+ARCHIVO_SALIDA = RUTA_RESULTADO / 'Exportaciones_GanadovsCarne2025-2026_NIT.xlsx'
 CORRE62_XLSX   = RUTA_COMEX / 'corre62.xlsx'
 
 ARCHIVOS_2025 = [
@@ -99,7 +99,7 @@ NOMBRES = [
 
 COLS_STR = {
     'NIT', 'CIUEXP', 'LUGSAL', 'POSARA', 'DEX', 'FECHDEC',
-    'FECHEMB', 'FECHPRO', 'RAZON',
+    'FECHEMB', 'FECHPRO', 'RAZON', 'MODALIDAD',
 }
 
 # Columnas con 2 decimales implícitos (SAS w.2)
@@ -188,10 +188,10 @@ def leer_ava(archivos: list) -> pd.DataFrame:
     df['SA']       = df['POSARA'].str[:6]
 
     # Normalizar campos de texto usados como agrupadores
-    df['NIT']      = df['NIT'].str.strip()
-    df['RAZON']    = df['RAZON'].str.strip()
-    df['LUGSAL']   = df['LUGSAL'].str.strip()
-    df['MODALIDAD'] = df['FORPA4'].astype('Int64').astype(str).str.zfill(3)
+    df['NIT']       = df['NIT'].str.strip()
+    df['RAZON']     = df['RAZON'].str.strip()
+    df['LUGSAL']    = df['LUGSAL'].str.strip()
+    df['MODALIDAD'] = df['MODALIDAD'].str.strip()
 
     # Indicador TRA: excluye productos minero-energéticos
     posara_tra = {'0901110000', '0901111000', '0901119000', '7202600000'}
@@ -258,9 +258,10 @@ def main():
     corre62.columns = corre62.columns.str.upper()
     corre62['POSARA'] = corre62['POSARA'].astype(str).str.strip().str.zfill(10)
 
-    # Merge con corre62 (LEFT JOIN — conserva solo registros de ganado/carne)
+    # EJE: TOTAL_DETALLE + columnas de corre62 (merge por POSARA)
     # Equivale a: DATA expo.EJE; MERGE expo.totalposara(IN=A) EXPO.corre62; BY posara; IF A;
-    eje = pd.merge(total_posara, corre62, on='POSARA', how='left')
+    # En SAS, "totalposara" es el resultado del %CALC con todos los grupos (= total_detalle).
+    eje = pd.merge(total_detalle, corre62, on='POSARA', how='left')
 
     # Exportar a Excel
     print(f"\nExportando a: {ARCHIVO_SALIDA}")
