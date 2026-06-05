@@ -248,10 +248,6 @@ def main():
     print("  Calculando TOTAL detalle (posara × mes × pais × modalidad × lugsal × NIT × RAZON)...")
     total_detalle = calc(df2025, df2026, GRUPOS_DETALLE)
 
-    # Agregación solo por posara (para el cruce con corre62 en el paso EJE)
-    print("  Calculando TOTAL por posara...")
-    total_posara = calc(df2025, df2026, ['POSARA'])
-
     # Leer tabla de referencia corre62
     print("Leyendo tabla de referencia corre62...")
     corre62 = pd.read_excel(CORRE62_XLSX)
@@ -269,8 +265,6 @@ def main():
 
     with pd.ExcelWriter(ARCHIVO_SALIDA, engine='openpyxl') as writer:
         eje.to_excel(writer, sheet_name='EJE', index=False)
-        total_detalle.to_excel(writer, sheet_name='TOTAL_DETALLE', index=False)
-        total_posara.to_excel(writer, sheet_name='TOTAL_POSARA', index=False)
 
     print("Proceso completado exitosamente.")
 
