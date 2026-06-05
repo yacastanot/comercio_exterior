@@ -217,7 +217,7 @@ def leer_ava(archivos: list) -> pd.DataFrame:
     # Derivar campos arancelarios desde POSARA
     # SAS: @153 CAPITULO 2. / PARTE 4. / SA 6. y luego parte=substr(posara,1,6)
     df['CAPITULO'] = df['POSARA'].str[:2].astype(int)
-    df['PARTE']    = df['POSARA'].str[:6]   # substr(posara,1,6) del SAS
+    df['PARTE']    = df['POSARA'].str[:4]
     df['SA']       = df['POSARA'].str[:6]
 
     # Indicador TRA: excluye productos minero-energéticos
