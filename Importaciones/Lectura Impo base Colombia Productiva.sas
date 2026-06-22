@@ -1,0 +1,47 @@
+FILENAME DATOS   ('\\systema44\Migracion\AVANCE IMPORTACIONES\COLOMBIA PRODUCTIVA 2026\M10126_COLOMBIA_PRODUCTIVA_SNR.ASU');
+                         
+DATA IMPO;
+INFILE DATOS;
+INPUT  MES 1-4 @23 REGIMEN $4. @72 NABAN  $ 10. @30 PBK 13.2 @43 PNK 13.2 @7 PAOR $3. 
+               @90 VAFODO 11.2 @101 FLETE 11.2 @112 VACID 13.2 @305 SEGUROS 13.2 @318 OTROSG 13.2 ;		 	   
+
+*----- 1. Total mensual sin país -----*;	
+PROC SUMMARY DATA=IMPO NWAY;
+    CLASS MES;
+    VAR PNK PBK VAFODO VACID FLETE SEGUROS OTROSG;
+    OUTPUT OUT=TOTAL_MES SUM=;
+
+DATA TOTAL_MES;
+    SET TOTAL_MES;
+    PAOR = "TOTAL";  /* Etiqueta especial para distinguir los totales */
+    TOTAL = SUM(PNK, PBK, VAFODO, VACID, FLETE, SEGUROS, OTROSG);
+
+*----- 2. Desglose por mes y país -----*;
+PROC SUMMARY DATA=IMPO NWAY;
+    CLASS MES PAOR;
+    VAR PNK PBK VAFODO VACID FLETE SEGUROS OTROSG;
+    OUTPUT OUT=TOTAL_PAISES SUM=;
+RUN;
+
+DATA TOTAL_PAISES;
+    SET TOTAL_PAISES;
+    TOTAL = SUM(PNK, PBK, VAFODO, VACID, FLETE, SEGUROS, OTROSG);
+RUN;
+
+*----- 3. Unir total mensual + desglose por país -----*;
+DATA TOTAL_FINAL;
+    SET TOTAL_MES TOTAL_PAISES;
+RUN;
+
+*----- 4. Ordenar para que el total quede primero, luego el desglose -----*;
+PROC SORT DATA=TOTAL_FINAL;
+    BY MES DESCENDING PAOR; 
+RUN;
+
+
+*----- 5. Mostrar resultados-----*;
+PROC PRINT DATA=TOTAL_FINAL;
+    VAR MES PAOR PNK PBK VAFODO VACID FLETE SEGUROS OTROSG;
+    FORMAT _NUMERIC_ 18.2;
+RUN;
+
