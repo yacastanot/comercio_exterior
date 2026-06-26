@@ -22,7 +22,7 @@ CORRE62_XLSX   = RUTA_COMEX / 'corre62.xlsx'
 
 ARCHIVOS_2025 = [
     RUTA_ASU / 'M10125.asu',
-    # RUTA_ASU / 'M10225.asu',
+    RUTA_ASU / 'M10225.asu',
     # RUTA_ASU / 'M10325.asu',
     # RUTA_ASU / 'M10425.asu',
     # RUTA_ASU / 'M10525.asu',
@@ -37,7 +37,7 @@ ARCHIVOS_2025 = [
 
 ARCHIVOS_2026 = [
     RUTA_ASU / 'M10126.asu',
-    # RUTA_ASU / 'M10226.asu',
+    RUTA_ASU / 'M10226.asu',
     # RUTA_ASU / 'M10326.asu',
     # RUTA_ASU / 'M10426.asu',
     # RUTA_ASU / 'M10526.asu',
@@ -93,7 +93,7 @@ NOMBRES = [
 ]
 
 COLS_STR = {
-    'FECH', 'PAOR', 'PAPR', 'PACO', 'REGIMEN', 'ACUERDO', 'CODUN',
+    'FECH', 'PACO', 'REGIMEN', 'ACUERDO', 'CODUN',
     'POSARA', 'CIUDAD', 'ACTIVID', 'LUIN', 'NIT', 'DIGV', 'RAZON',
 }
 
@@ -156,6 +156,11 @@ def leer_asu(archivos: list) -> pd.DataFrame:
 
     df = pd.concat(partes, ignore_index=True)
 
+    # Strip whitespace antes de la conversión numérica (PAOR/PAPR pueden ser aún object)
+    for col in ('REGIMEN', 'PAOR', 'PAPR', 'NIT', 'RAZON', 'ACUERDO', 'LUIN'):
+        if df[col].dtype == object:
+            df[col] = df[col].str.strip()
+
     for col in NOMBRES:
         if col not in COLS_STR:
             df[col] = pd.to_numeric(df[col], errors='coerce')
@@ -167,9 +172,6 @@ def leer_asu(archivos: list) -> pd.DataFrame:
     df['CAPITULO'] = pd.to_numeric(df['POSARA'].str[:2], errors='coerce')
     df['PARTE']    = pd.to_numeric(df['POSARA'].str[:4], errors='coerce')
     df['MES']      = pd.to_numeric(df['FECH'].str[2:4], errors='coerce')
-
-    for col in ('REGIMEN', 'PAOR', 'PAPR', 'NIT', 'RAZON', 'ACUERDO', 'LUIN'):
-        df[col] = df[col].str.strip()
 
     return df
 
@@ -188,13 +190,14 @@ def filtrar_impo(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def resumir(df: pd.DataFrame, sufijo: str) -> pd.DataFrame:
-    # Filtro de POSARA dentro del macro
     df_filt = df[df['POSARA'].isin(POSARA_FILTRO)].copy()
-    return (
+    freq = df_filt.groupby(GRUPO, dropna=False).size().reset_index(name='_FREQ_')
+    sumas = (
         df_filt.groupby(GRUPO, as_index=False, dropna=False)[VARS_SUMA]
         .sum()
         .rename(columns={v: f'{v}{sufijo}' for v in VARS_SUMA})
     )
+    return pd.merge(freq, sumas, on=GRUPO)
 
 
 # =============================================================================
@@ -216,22 +219,39 @@ def main():
     tot26 = resumir(df2026, '2026')
 
     # DATA IMPO.TOTAL&VAR: merge outer (2026 primero, luego 2025)
-    total = pd.merge(tot26, tot25, on=GRUPO, how='outer')
+    total = pd.merge(
+        tot26,
+        tot25.rename(columns={'_FREQ_': '_FREQ_2025'}),
+        on=GRUPO, how='outer',
+    )
+    freq2026 = total.pop('_FREQ_')
+    freq2025 = total.pop('_FREQ_2025')
+    total['_FREQ_'] = freq2025.combine_first(freq2026).astype(int)
+    # _FREQ_ justo después de las claves de grupo, antes de las sumas
+    resto = [c for c in total.columns if c not in GRUPO + ['_FREQ_']]
+    total = total[GRUPO + ['_FREQ_'] + resto]
     total = total.sort_values('POSARA').reset_index(drop=True)
 
     # DATA impo.EJE: MERGE impo.totalposara(IN=A) IMPO.corre62; BY posara; IF A
     print("Leyendo tabla de referencia corre62...")
-    corre62 = pd.read_excel(CORRE62_XLSX)
-    corre62.columns = corre62.columns.str.upper()
-    corre62['POSARA'] = corre62['POSARA'].astype(str).str.strip().str.zfill(10)
+    # dtype=str preserva ceros iniciales ('012', '0015', etc.)
+    # Solo strip en nombres: conserva capitalización original (Descrip, Cuode, CUCIsec…)
+    corre62 = pd.read_excel(CORRE62_XLSX, dtype=str)
+    corre62.columns = corre62.columns.str.strip()
+    corre62['POSARA'] = corre62['POSARA'].str.strip().str.zfill(10)
 
     eje = pd.merge(total, corre62, on='POSARA', how='left')
     print(f"Filas en EJE: {len(eje):,}")
 
+    # POSARA como entero, igual que SAS
+    eje['POSARA'] = pd.to_numeric(eje['POSARA'], errors='coerce').astype('Int64')
+    # REGIMEN en minúsculas, igual que SAS
+    eje = eje.rename(columns={'REGIMEN': 'regimen'})
+
     print(f"\nExportando a: {ARCHIVO_SALIDA}")
     ARCHIVO_SALIDA.parent.mkdir(parents=True, exist_ok=True)
     with pd.ExcelWriter(ARCHIVO_SALIDA, engine='openpyxl') as writer:
-        eje.to_excel(writer, sheet_name='EJE', index=False)
+        eje.to_excel(writer, sheet_name='Hoja1', index=False)
 
     print("Proceso completado exitosamente.")
 

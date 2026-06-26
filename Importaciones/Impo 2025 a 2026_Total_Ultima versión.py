@@ -1,8 +1,8 @@
 """
-Migración a Python: Importaciones 2024-2025-2026 Total (con NIT y Razón Social)
+Migración a Python: Importaciones 2026 (enero-febrero)
 Equivalente al programa SAS 'Impo 2025 a 2026_Total_Ultima versión.sas'.
 
-Procesa tres años (2024 completo, 2025 completo, 2026 parcial).
+Procesa solo los meses disponibles de 2026.
 Agrupación: posara, parte, capitulo, depto, paor, mes.
 Dependencias: pip install pandas openpyxl
 """
@@ -20,24 +20,30 @@ RUTA_RESULTADO = RUTA_COMEX / 'IMPO' / 'Resultados'
 ARCHIVO_SALIDA = RUTA_RESULTADO / 'Importaciones 2026.xlsx'
 CORRE62_XLSX   = RUTA_COMEX / 'corre62.xlsx'
 
-# 2024: año completo (12 meses)
-ARCHIVOS_2024 = [
-    RUTA_ASU / 'M10124.asu', RUTA_ASU / 'M10224.asu',
-    RUTA_ASU / 'M10324.asu', RUTA_ASU / 'M10424.asu',
-    RUTA_ASU / 'M10524.asu', RUTA_ASU / 'M10624.asu',
-    RUTA_ASU / 'M10724.asu', RUTA_ASU / 'M10824.asu',
-    RUTA_ASU / 'M10924.asu', RUTA_ASU / 'M11024.asu',
-    RUTA_ASU / 'M11124.asu', RUTA_ASU / 'M11224.asu',
-]
+# # 2024: año completo (12 meses)
+# ARCHIVOS_2024 = [
+#     RUTA_ASU / 'M10124.asu', RUTA_ASU / 'M10224.asu',
+#     RUTA_ASU / 'M10324.asu', RUTA_ASU / 'M10424.asu',
+#     RUTA_ASU / 'M10524.asu', RUTA_ASU / 'M10624.asu',
+#     RUTA_ASU / 'M10724.asu', RUTA_ASU / 'M10824.asu',
+#     RUTA_ASU / 'M10924.asu', RUTA_ASU / 'M11024.asu',
+#     RUTA_ASU / 'M11124.asu', RUTA_ASU / 'M11224.asu',
+# ]
 
-# 2025: año completo (activar meses a medida que estén disponibles)
+# 2025: mismo periodo que 2026 (enero-febrero)
 ARCHIVOS_2025 = [
-    RUTA_ASU / 'M10125.asu', RUTA_ASU / 'M10225.asu',
-    RUTA_ASU / 'M10325.asu', RUTA_ASU / 'M10425.asu',
-    RUTA_ASU / 'M10525.asu', RUTA_ASU / 'M10625.asu',
-    RUTA_ASU / 'M10725.asu', RUTA_ASU / 'M10825.asu',
-    RUTA_ASU / 'M10925.asu', RUTA_ASU / 'M11025.asu',
-    RUTA_ASU / 'M11125.asu', RUTA_ASU / 'M11225.asu',
+    RUTA_ASU / 'M10125.asu',
+    RUTA_ASU / 'M10225.asu',
+    # RUTA_ASU / 'M10325.asu',
+    # RUTA_ASU / 'M10425.asu',
+    # RUTA_ASU / 'M10525.asu',
+    # RUTA_ASU / 'M10625.asu',
+    # RUTA_ASU / 'M10725.asu',
+    # RUTA_ASU / 'M10825.asu',
+    # RUTA_ASU / 'M10925.asu',
+    # RUTA_ASU / 'M11025.asu',
+    # RUTA_ASU / 'M11125.asu',
+    # RUTA_ASU / 'M11225.asu',
 ]
 
 # 2026: meses disponibles (comentar los no disponibles)
@@ -154,6 +160,11 @@ def leer_asu(archivos: list) -> pd.DataFrame:
 
     df = pd.concat(partes, ignore_index=True)
 
+    # Strip whitespace antes de la conversión numérica (PAOR puede ser aún object)
+    for col in ('REGIMEN', 'PAOR', 'NIT', 'RAZON', 'ACUERDO'):
+        if df[col].dtype == object:
+            df[col] = df[col].str.strip()
+
     for col in NOMBRES:
         if col not in COLS_STR:
             df[col] = pd.to_numeric(df[col], errors='coerce')
@@ -166,9 +177,6 @@ def leer_asu(archivos: list) -> pd.DataFrame:
     df['PARTE']    = pd.to_numeric(df['POSARA'].str[:4], errors='coerce')
     df['SA']       = df['POSARA'].str[:6]
     df['MES']      = pd.to_numeric(df['FECH'].str[2:4], errors='coerce')
-
-    for col in ('REGIMEN', 'PAOR', 'NIT', 'RAZON', 'ACUERDO'):
-        df[col] = df[col].str.strip()
 
     return df
 
@@ -187,11 +195,13 @@ def filtrar_impo(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def resumir(df: pd.DataFrame, sufijo: str) -> pd.DataFrame:
-    return (
+    freq = df.groupby(GRUPO, dropna=False).size().reset_index(name='_FREQ_')
+    sumas = (
         df.groupby(GRUPO, as_index=False, dropna=False)[VARS_SUMA]
         .sum()
         .rename(columns={v: f'{v}{sufijo}' for v in VARS_SUMA})
     )
+    return pd.merge(freq, sumas, on=GRUPO)
 
 
 # =============================================================================
@@ -199,11 +209,11 @@ def resumir(df: pd.DataFrame, sufijo: str) -> pd.DataFrame:
 # =============================================================================
 
 def main():
-    print("=== IMPORTACIONES 2024-2025-2026 TOTAL ===\n")
+    print("=== IMPORTACIONES 2026 vs 2025 (enero-febrero) ===\n")
 
-    print("Leyendo archivos 2024...")
-    df2024 = filtrar_impo(leer_asu(ARCHIVOS_2024))
-    print(f"  Total 2024: {len(df2024):,}\n")
+    # print("Leyendo archivos 2024...")
+    # df2024 = filtrar_impo(leer_asu(ARCHIVOS_2024))
+    # print(f"  Total 2024: {len(df2024):,}\n")
 
     print("Leyendo archivos 2025...")
     df2025 = filtrar_impo(leer_asu(ARCHIVOS_2025))
@@ -214,25 +224,44 @@ def main():
     print(f"  Total 2026: {len(df2026):,}\n")
 
     # Equivale a PROC SUMMARY + DATA IMPO.TOTAL&VAR (merge outer, 2026 primero)
-    tot24 = resumir(df2024, '2024')
+    # tot24 = resumir(df2024, '2024')
     tot25 = resumir(df2025, '2025')
     tot26 = resumir(df2026, '2026')
-    total = pd.merge(tot26, tot25, on=GRUPO, how='outer')
-    total = pd.merge(total, tot24, on=GRUPO, how='outer')
+    total = pd.merge(
+        tot26,
+        tot25.rename(columns={'_FREQ_': '_FREQ_2025'}),
+        on=GRUPO, how='outer',
+    )
+    # _FREQ_ toma el valor de 2026 si existe, si no el de 2025
+    total['_FREQ_'] = total['_FREQ_'].combine_first(total.pop('_FREQ_2025')).astype(int)
+    # total = pd.merge(total, tot24, on=GRUPO, how='outer')
     total = total.sort_values('POSARA').reset_index(drop=True)
 
     print("Leyendo tabla de referencia corre62...")
-    corre62 = pd.read_excel(CORRE62_XLSX)
-    corre62.columns = corre62.columns.str.upper()
-    corre62['POSARA'] = corre62['POSARA'].astype(str).str.strip().str.zfill(10)
+    # dtype=str preserva ceros iniciales ('012', '0015', etc.)
+    # Solo strip en nombres: conserva capitalización original (Descrip, Cuode, CUCIsec…)
+    corre62 = pd.read_excel(CORRE62_XLSX, dtype=str)
+    corre62.columns = corre62.columns.str.strip()
+    corre62['POSARA'] = corre62['POSARA'].str.strip().str.zfill(10)
 
     eje = pd.merge(total, corre62, on='POSARA', how='left')
     print(f"Filas en EJE: {len(eje):,}")
 
+    # POSARA como entero, igual que SAS (elimina el cero de relleno a la izquierda)
+    eje['POSARA'] = pd.to_numeric(eje['POSARA'], errors='coerce').astype('Int64')
+
     print(f"\nExportando a: {ARCHIVO_SALIDA}")
     ARCHIVO_SALIDA.parent.mkdir(parents=True, exist_ok=True)
+    MAX_FILAS = 1_048_575  # límite de filas de Excel menos 1 para el encabezado
     with pd.ExcelWriter(ARCHIVO_SALIDA, engine='openpyxl') as writer:
-        eje.to_excel(writer, sheet_name='EJE', index=False)
+        if len(eje) <= MAX_FILAS:
+            eje.to_excel(writer, sheet_name='EJE', index=False)
+        else:
+            for i, inicio in enumerate(range(0, len(eje), MAX_FILAS), start=1):
+                eje.iloc[inicio:inicio + MAX_FILAS].to_excel(
+                    writer, sheet_name=f'EJE_{i}', index=False
+                )
+            print(f"  Datos divididos en {i} hojas (EJE_1 … EJE_{i})")
 
     print("Proceso completado exitosamente.")
 

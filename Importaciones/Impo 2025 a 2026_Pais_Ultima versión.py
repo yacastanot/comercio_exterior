@@ -21,7 +21,7 @@ CORRE62_XLSX   = RUTA_COMEX / 'corre62.xlsx'
 
 ARCHIVOS_2025 = [
     RUTA_ASU / 'M10125.asu',
-    # RUTA_ASU / 'M10225.asu',
+    RUTA_ASU / 'M10225.asu',
     # RUTA_ASU / 'M10325.asu',
     # RUTA_ASU / 'M10425.asu',
     # RUTA_ASU / 'M10525.asu',
@@ -36,7 +36,7 @@ ARCHIVOS_2025 = [
 
 ARCHIVOS_2026 = [
     RUTA_ASU / 'M10126.asu',
-    # RUTA_ASU / 'M10226.asu',
+    RUTA_ASU / 'M10226.asu',
     # RUTA_ASU / 'M10326.asu',
     # RUTA_ASU / 'M10426.asu',
     # RUTA_ASU / 'M10526.asu',
@@ -91,7 +91,7 @@ NOMBRES = [
 ]
 
 COLS_STR = {
-    'FECH', 'PAOR', 'PAPR', 'PACO', 'REGIMEN', 'ACUERDO', 'CODUN',
+    'FECH', 'PAPR', 'PACO', 'REGIMEN', 'ACUERDO', 'CODUN',
     'POSARA', 'CIUDAD', 'ACTIVID', 'NIT', 'DIGV', 'RAZON',
 }
 
@@ -147,6 +147,11 @@ def leer_asu(archivos: list) -> pd.DataFrame:
 
     df = pd.concat(partes, ignore_index=True)
 
+    # Strip whitespace antes de la conversión numérica (PAOR puede ser aún object)
+    for col in ('REGIMEN', 'PAOR', 'NIT', 'RAZON', 'ACUERDO'):
+        if df[col].dtype == object:
+            df[col] = df[col].str.strip()
+
     for col in NOMBRES:
         if col not in COLS_STR:
             df[col] = pd.to_numeric(df[col], errors='coerce')
@@ -159,9 +164,6 @@ def leer_asu(archivos: list) -> pd.DataFrame:
     df['PARTE']    = pd.to_numeric(df['POSARA'].str[:4], errors='coerce')
     df['SA']       = df['POSARA'].str[:6]
     df['MES']      = pd.to_numeric(df['FECH'].str[2:4], errors='coerce')
-
-    for col in ('REGIMEN', 'PAOR', 'NIT', 'RAZON', 'ACUERDO'):
-        df[col] = df[col].str.strip()
 
     return df
 
@@ -180,11 +182,13 @@ def filtrar_impo(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def resumir(df: pd.DataFrame, sufijo: str) -> pd.DataFrame:
-    return (
+    freq = df.groupby(GRUPO, dropna=False).size().reset_index(name='_FREQ_')
+    sumas = (
         df.groupby(GRUPO, as_index=False, dropna=False)[VARS_SUMA]
         .sum()
         .rename(columns={v: f'{v}{sufijo}' for v in VARS_SUMA})
     )
+    return pd.merge(freq, sumas, on=GRUPO)
 
 
 # =============================================================================
@@ -204,16 +208,32 @@ def main():
 
     tot25 = resumir(df2025, '2025')
     tot26 = resumir(df2026, '2026')
-    total = pd.merge(tot26, tot25, on=GRUPO, how='outer')
+    total = pd.merge(
+        tot26,
+        tot25.rename(columns={'_FREQ_': '_FREQ_2025'}),
+        on=GRUPO, how='outer',
+    )
+    # _FREQ_ toma el valor de 2025 si existe, si no el de 2026 (igual que SAS)
+    freq2026 = total.pop('_FREQ_')
+    freq2025 = total.pop('_FREQ_2025')
+    total['_FREQ_'] = freq2025.combine_first(freq2026).astype(int)
+    # Posicionar _FREQ_ después de las claves de grupo (igual que SAS)
+    resto = [c for c in total.columns if c not in GRUPO + ['_FREQ_']]
+    total = total[GRUPO + ['_FREQ_'] + resto]
     total = total.sort_values('POSARA').reset_index(drop=True)
 
     print("Leyendo tabla de referencia corre62...")
-    corre62 = pd.read_excel(CORRE62_XLSX)
-    corre62.columns = corre62.columns.str.upper()
-    corre62['POSARA'] = corre62['POSARA'].astype(str).str.strip().str.zfill(10)
+    # dtype=str preserva ceros iniciales ('012', '0015', etc.)
+    # Solo strip en nombres: conserva capitalización original (Descrip, Cuode, CUCIsec…)
+    corre62 = pd.read_excel(CORRE62_XLSX, dtype=str)
+    corre62.columns = corre62.columns.str.strip()
+    corre62['POSARA'] = corre62['POSARA'].str.strip().str.zfill(10)
 
     eje = pd.merge(total, corre62, on='POSARA', how='left')
     print(f"Filas en EJE: {len(eje):,}")
+
+    # POSARA como entero, igual que SAS (elimina el cero de relleno a la izquierda)
+    eje['POSARA'] = pd.to_numeric(eje['POSARA'], errors='coerce').astype('Int64')
 
     print(f"\nExportando a: {ARCHIVO_SALIDA}")
     ARCHIVO_SALIDA.parent.mkdir(parents=True, exist_ok=True)

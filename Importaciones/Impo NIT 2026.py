@@ -1,10 +1,9 @@
 """
-Migración a Python: Importaciones NIT 2026 – Maíz, Arroz y Pollo
+Migración a Python: Importaciones NIT 2026 – Combustibles (CUCIsubg 3341/3343)
 Equivalente al programa SAS 'Impo NIT 2026.sas'.
 
-Procesa tres años (2024-2025-2026), filtra posiciones arancelarias de
-arroz, pollo y maíz duro, y conserva solo productos con CUCIsubg 3341 ó 3343.
-Agrupación: posara, mes, paor, regimen, NIT, RAZON.
+Procesa tres años (2024-2025-2026), agrupa por (posara, mes, paor, regimen, NIT, RAZON)
+y conserva solo productos con CUCIsubg 3341 ó 3343 (combustibles) tras cruzar con corre62.
 Dependencias: pip install pandas openpyxl
 """
 
@@ -96,7 +95,7 @@ NOMBRES = [
 ]
 
 COLS_STR = {
-    'FECH', 'PAOR', 'PAPR', 'PACO', 'REGIMEN', 'ACUERDO', 'CODUN',
+    'FECH', 'PAPR', 'PACO', 'REGIMEN', 'ACUERDO', 'CODUN',
     'POSARA', 'CIUDAD', 'ACTIVID', 'NIT', 'DIGV', 'RAZON',
 }
 
@@ -117,14 +116,6 @@ NITS_AEREAS = {
 }
 POSARA_AEREAS  = {'8802400000', '8802309000'}
 REGIMEN_AEREAS = {'C190', 'C196'}
-
-# Posiciones arancelarias de interés (arroz, cuartos traseros pollo, maíz)
-POSARA_FILTRO = {
-    '1006109000', '1006200000', '1006300010', '1006300090', '1006400000',  # arroz
-    '0207130010', '0207140010',                                             # pollo
-    '1602321000',                                                           # cuartos traseros
-    '1005901100',                                                           # maíz duro amarillo
-}
 
 # Agrupación: equivale a %CIF(posara mes paor regimen NIT RAZON)
 GRUPO     = ['POSARA', 'MES', 'PAOR', 'REGIMEN', 'NIT', 'RAZON']
@@ -159,6 +150,11 @@ def leer_asu(archivos: list) -> pd.DataFrame:
 
     df = pd.concat(partes, ignore_index=True)
 
+    # Strip whitespace antes de la conversión numérica (PAOR puede ser aún object)
+    for col in ('REGIMEN', 'PAOR', 'NIT', 'RAZON', 'ACUERDO'):
+        if df[col].dtype == object:
+            df[col] = df[col].str.strip()
+
     for col in NOMBRES:
         if col not in COLS_STR:
             df[col] = pd.to_numeric(df[col], errors='coerce')
@@ -171,9 +167,6 @@ def leer_asu(archivos: list) -> pd.DataFrame:
     df['PARTE']    = pd.to_numeric(df['POSARA'].str[:4], errors='coerce')
     df['SA']       = df['POSARA'].str[:6]
     df['MES']      = pd.to_numeric(df['FECH'].str[2:4], errors='coerce')
-
-    for col in ('REGIMEN', 'PAOR', 'NIT', 'RAZON', 'ACUERDO'):
-        df[col] = df[col].str.strip()
 
     return df
 
@@ -192,13 +185,13 @@ def filtrar_impo(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def resumir(df: pd.DataFrame, sufijo: str) -> pd.DataFrame:
-    # Filtro de POSARA dentro del macro (IF posara IN (...))
-    df_filt = df[df['POSARA'].isin(POSARA_FILTRO)].copy()
-    return (
-        df_filt.groupby(GRUPO, as_index=False, dropna=False)[VARS_SUMA]
+    freq = df.groupby(GRUPO, dropna=False).size().reset_index(name='_FREQ_')
+    sumas = (
+        df.groupby(GRUPO, as_index=False, dropna=False)[VARS_SUMA]
         .sum()
         .rename(columns={v: f'{v}{sufijo}' for v in VARS_SUMA})
     )
+    return pd.merge(freq, sumas, on=GRUPO)
 
 
 # =============================================================================
@@ -225,31 +218,59 @@ def main():
     tot25 = resumir(df2025, '2025')
     tot26 = resumir(df2026, '2026')
 
-    # DATA IMPO.TOTAL&VAR: merge outer (2026 primero, luego 2025 y 2024)
-    total = pd.merge(tot26, tot25, on=GRUPO, how='outer')
-    total = pd.merge(total, tot24, on=GRUPO, how='outer')
+    # DATA IMPO.TOTAL&VAR: MERGE TOTAL2026 TOTAL2025 TOTAL2024 (último gana en SAS)
+    total = pd.merge(
+        tot26.rename(columns={'_FREQ_': '_FREQ_2026'}),
+        tot25.rename(columns={'_FREQ_': '_FREQ_2025'}),
+        on=GRUPO, how='outer',
+    )
+    total = pd.merge(
+        total,
+        tot24.rename(columns={'_FREQ_': '_FREQ_2024'}),
+        on=GRUPO, how='outer',
+    )
+    # _FREQ_: equivale a MERGE SAS donde tot24 es el último → 2024 gana sobre 2025 sobre 2026
+    total['_FREQ_'] = (
+        total['_FREQ_2024']
+        .combine_first(total['_FREQ_2025'])
+        .combine_first(total['_FREQ_2026'])
+        .astype(int)
+    )
+    total = total.drop(columns=['_FREQ_2024', '_FREQ_2025', '_FREQ_2026'])
+    # Posicionar _FREQ_ después de las claves de grupo
+    resto = [c for c in total.columns if c not in GRUPO + ['_FREQ_']]
+    total = total[GRUPO + ['_FREQ_'] + resto]
     total = total.sort_values('POSARA').reset_index(drop=True)
 
     # DATA EjeNIT: MERGE impo.totalposara(IN=A) IMPO.corre62; BY posara; IF A
     print("Leyendo tabla de referencia corre62...")
-    corre62 = pd.read_excel(CORRE62_XLSX)
-    corre62.columns = corre62.columns.str.upper()
-    corre62['POSARA'] = corre62['POSARA'].astype(str).str.strip().str.zfill(10)
+    # dtype=str preserva ceros iniciales ('012', '0015', etc.)
+    # Solo strip en nombres: conserva capitalización original (Descrip, Cuode, CUCIsec…)
+    corre62 = pd.read_excel(CORRE62_XLSX, dtype=str)
+    corre62.columns = corre62.columns.str.strip()
+    corre62['POSARA'] = corre62['POSARA'].str.strip().str.zfill(10)
 
     eje_nit = pd.merge(total, corre62, on='POSARA', how='left')
 
-    # IF A AND (CUCIsubg = 3341 OR CUCIsubg = 3343)
-    if 'CUCISUBG' in eje_nit.columns:
-        eje_nit = eje_nit[eje_nit['CUCISUBG'].isin([3341, 3343])].copy()
+    # POSARA como entero, igual que SAS (elimina el cero de relleno a la izquierda)
+    eje_nit['POSARA'] = pd.to_numeric(eje_nit['POSARA'], errors='coerce').astype('Int64')
+
+    # IF A AND (CUCIsubg = '3341' OR CUCIsubg = '3343')
+    # Con dtype=str, CUCIsubg es string → comparar con strings
+    if 'CUCIsubg' in eje_nit.columns:
+        eje_nit = eje_nit[eje_nit['CUCIsubg'].isin(['3341', '3343'])].copy()
     else:
-        print("  [AVISO] Columna CUCISUBG no encontrada en corre62; se omite el filtro.")
+        print("  [AVISO] Columna CUCIsubg no encontrada en corre62; se omite el filtro.")
+
+    # Renombrar REGIMEN → regimen para coincidir con la variable SAS (definida en minúsculas)
+    eje_nit = eje_nit.rename(columns={'REGIMEN': 'regimen'})
 
     print(f"Filas en EjeNIT: {len(eje_nit):,}")
 
     print(f"\nExportando a: {ARCHIVO_SALIDA}")
     ARCHIVO_SALIDA.parent.mkdir(parents=True, exist_ok=True)
     with pd.ExcelWriter(ARCHIVO_SALIDA, engine='openpyxl') as writer:
-        eje_nit.to_excel(writer, sheet_name='EjeNIT', index=False)
+        eje_nit.to_excel(writer, sheet_name='EJENIT', index=False)
 
     print("Proceso completado exitosamente.")
 
